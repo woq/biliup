@@ -253,7 +253,7 @@ async fn read_tags(
                         warn!("Error in parsing script tag: {e:?}");
                         TagDataHeader::Script(crate::downloader::flv_parser::ScriptData {
                             name: "",
-                            data: crate::downloader::flv_parser::ScriptDataValue::Null,
+                            arguments: crate::downloader::flv_parser::ScriptDataValue::Null,
                         })
                     }
                 };
