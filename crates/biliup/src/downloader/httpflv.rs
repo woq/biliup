@@ -174,24 +174,20 @@ async fn read_tags(
         let flv_tag = match flv_tag_data {
             TagData::Audio(audio_data) => {
                 let packet_type = if audio_data.sound_format == SoundFormat::AAC {
-                    match aac_audio_packet_header(audio_data.sound_data) {
-                        Ok((_, packet_header)) => {
-                            if packet_header.packet_type == AACPacketType::SequenceHeader {
-                                if aac_sequence_header.is_some() {
-                                    warn!("Unexpected aac sequence header tag. {tag_header:?}");
-                                    // panic!("Unexpected aac_sequence_header tag.");
-                                    // create_new = true;
-                                }
-                                aac_sequence_header =
-                                    Some((tag_header, bytes.clone(), previous_tag_size.clone()))
-                            }
-                            Some(packet_header.packet_type)
+                    let (_, packet_header) = map_parse_err(
+                        aac_audio_packet_header(audio_data.sound_data),
+                        "aac audio packet header",
+                    )?;
+                    if packet_header.packet_type == AACPacketType::SequenceHeader {
+                        if aac_sequence_header.is_some() {
+                            warn!("Unexpected aac sequence header tag. {tag_header:?}");
+                            // panic!("Unexpected aac_sequence_header tag.");
+                            // create_new = true;
                         }
-                        Err(e) => {
-                            warn!("Error parsing aac audio packet header: {e:?}");
-                            None
-                        }
+                        aac_sequence_header =
+                            Some((tag_header, bytes.clone(), previous_tag_size.clone()))
                     }
+                    Some(packet_header.packet_type)
                 } else {
                     None
                 };
@@ -209,29 +205,25 @@ async fn read_tags(
             }
             TagData::Video(video_data) => {
                 let (packet_type, composition_time) = if CodecId::H264 == video_data.codec_id {
-                    match avc_video_packet_header(video_data.video_data) {
-                        Ok((_, avc_video_header)) => {
-                            if avc_video_header.packet_type == AVCPacketType::SequenceHeader {
-                                if let Some((_, binary_data, _)) = &h264_sequence_header {
-                                    warn!("Unexpected h264 sequence header tag. {tag_header:?}");
-                                    if bytes != binary_data {
-                                        create_new = true;
-                                        warn!("Different h264 sequence header tag. {tag_header:?}");
-                                    }
-                                }
-                                h264_sequence_header =
-                                    Some((tag_header, bytes.clone(), previous_tag_size.clone()))
+                    let (_, avc_video_header) = map_parse_err(
+                        avc_video_packet_header(video_data.video_data),
+                        "avc video packet header",
+                    )?;
+                    if avc_video_header.packet_type == AVCPacketType::SequenceHeader {
+                        if let Some((_, binary_data, _)) = &h264_sequence_header {
+                            warn!("Unexpected h264 sequence header tag. {tag_header:?}");
+                            if bytes != binary_data {
+                                create_new = true;
+                                warn!("Different h264 sequence header tag. {tag_header:?}");
                             }
-                            (
-                                Some(avc_video_header.packet_type),
-                                Some(avc_video_header.composition_time),
-                            )
                         }
-                        Err(e) => {
-                            warn!("Error parsing avc video packet header: {e:?}");
-                            (None, None)
-                        }
+                        h264_sequence_header =
+                            Some((tag_header, bytes.clone(), previous_tag_size.clone()))
                     }
+                    (
+                        Some(avc_video_header.packet_type),
+                        Some(avc_video_header.composition_time),
+                    )
                 } else {
                     (None, None)
                 };
@@ -247,16 +239,7 @@ async fn read_tags(
                 }
             }
             TagData::Script => {
-                let tag_data = match script_data(i) {
-                    Ok((_, data)) => TagDataHeader::Script(data),
-                    Err(e) => {
-                        warn!("Error in parsing script tag: {e:?}");
-                        TagDataHeader::Script(crate::downloader::flv_parser::ScriptData {
-                            name: "",
-                            arguments: crate::downloader::flv_parser::ScriptDataValue::Null,
-                        })
-                    }
-                };
+                let (_, tag_data) = map_parse_err(script_data(i), "script tag")?;
                 if on_meta_data.is_some() {
                     warn!("Unexpected script tag. {tag_header:?}");
                 }
@@ -264,7 +247,7 @@ async fn read_tags(
 
                 FlvTag {
                     header: tag_header,
-                    data: tag_data,
+                    data: TagDataHeader::Script(tag_data),
                 }
             }
         };
